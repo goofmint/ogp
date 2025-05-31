@@ -16,7 +16,10 @@ if (!API_TOKEN) {
 
 app.get('/', async (req, res) => {
 	// トークン認証
-	const requestToken = req.query.token;
+	const authHeader = req.headers.authorization;
+	const requestToken = authHeader && authHeader.startsWith('Bearer ')
+		? authHeader.substring(7)
+		: null;
 	if (!requestToken || requestToken !== API_TOKEN) {
 		return res.status(401).json({ error: 'Unauthorized: Invalid or missing token' });
 	}
@@ -28,7 +31,14 @@ app.get('/', async (req, res) => {
 	const hash = crypto.createHash('sha256').update(url).digest('hex');
 	const cachePath = `/cache/${hash}.json`;
 	try {
-		const data = await ((force && fs.existsSync(cachePath)) ? promisify(fs.readFile)(cachePath, 'utf8') : ogp(url, { skipOembed: true }));
+		let data;
+		if (!force && fs.existsSync(cachePath)) {
+			// キャッシュが存在し、強制取得でない場合はキャッシュから読み込み
+			data = JSON.parse(await promisify(fs.readFile)(cachePath, 'utf8'));
+		} else {
+			// キャッシュが存在しないか、強制取得の場合は新規取得
+			data = await ogp(url, { skipOembed: true });
+		}
 		if (data) {
 			await promisify(fs.writeFile)(cachePath, JSON.stringify(data));
 		}
